@@ -1,0 +1,126 @@
+-- LocalScript in StarterPlayerScripts
+
+--// Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+--// Load Rayfield via loadstring
+local RayfieldLibrary = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
+
+--// Survivor folder
+local SurvivorsFolder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
+
+--// Rayfield UI
+local Window = RayfieldLibrary:CreateWindow({
+    Name = "ESP Controller",
+    LoadingTitle = "Rayfield Interface Suite",
+    LoadingSubtitle = "by Sirius",
+    Theme = "Default",
+    Icon = 0,
+    ConfigurationSaving = { Enabled = false },
+    KeySystem = false,
+})
+
+local MainTab = Window:CreateTab("Main", "eye")
+
+--// ESP logic
+local ESP_COLOR = Color3.fromRGB(0, 255, 0)
+local espEnabled = false
+local highlights = {}
+local connections = {}
+
+local function attachHighlight(model)
+    if highlights[model] then return end
+    local hl = Instance.new("Highlight")
+    hl.Name = "SurvivorESP"
+    hl.Adornee = model
+    hl.FillTransparency = 1
+    hl.OutlineTransparency = 0
+    hl.OutlineColor = ESP_COLOR
+    pcall(function()
+        hl.DepthMode = Enum.HighlightDepthMode.Always
+    end)
+    hl.Parent = model
+    highlights[model] = hl
+end
+
+local function removeHighlight(model)
+    local hl = highlights[model]
+    if hl then hl:Destroy() end
+    highlights[model] = nil
+end
+
+local function refreshESP()
+    for _, child in ipairs(SurvivorsFolder:GetChildren()) do
+        if child:IsA("Model") and child:FindFirstChild("Humanoid") then
+            attachHighlight(child)
+        end
+    end
+end
+
+local function clearESP()
+    for model, hl in pairs(highlights) do
+        if hl then hl:Destroy() end
+    end
+    table.clear(highlights)
+end
+
+local function disconnectEvents()
+    for _, conn in ipairs(connections) do
+        if conn and conn.Disconnect then conn:Disconnect() end
+    end
+    table.clear(connections)
+end
+
+local function watchSurvivors()
+    disconnectEvents()
+
+    table.insert(connections, SurvivorsFolder.ChildAdded:Connect(function(child)
+        if espEnabled and child:IsA("Model") and child:FindFirstChild("Humanoid") then
+            attachHighlight(child)
+        end
+    end))
+
+    table.insert(connections, SurvivorsFolder.ChildRemoved:Connect(function(child)
+        if child:IsA("Model") then
+            removeHighlight(child)
+        end
+    end))
+
+    table.insert(connections, SurvivorsFolder.DescendantAdded:Connect(function(desc)
+        if not espEnabled then return end
+        local model = desc:FindFirstAncestorOfClass("Model")
+        if model and model:FindFirstChild("Humanoid") and model.Parent == SurvivorsFolder then
+            attachHighlight(model)
+        end
+    end))
+end
+
+--// Rayfield toggle
+MainTab:CreateToggle({
+    Name = "Toggle ESP for Survivors",
+    CurrentValue = false,
+    Flag = "SurvivorESPToggle",
+    Callback = function(enabled)
+        pcall(function()
+            espEnabled = enabled
+            if enabled then
+                refreshESP()
+                watchSurvivors()
+                RayfieldLibrary:Notify({
+                    Title = "ESP Enabled",
+                    Content = "Survivors are now outlined in green.",
+                    Duration = 3
+                })
+            else
+                clearESP()
+                disconnectEvents()
+                RayfieldLibrary:Notify({
+                    Title = "ESP Disabled",
+                    Content = "Survivor outlines removed.",
+                    Duration = 3
+                })
+            end
+        end)
+    end,
+})
